@@ -67,19 +67,6 @@ PROJECT_STATE.md              Working notes
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-## Run the bot
-
-Set the secrets locally. Do not commit them.
-
-```bash
-export TELEGRAM_TOKEN="your-telegram-token"
-export OPENAI_API_KEY="your-openai-key"
-export OPENAI_MODEL="gpt-4o-mini"
-export BOT_USERNAME="@LegalCodebreakerBot"
-
-python3 chatbot.py
-```
-
 ## Source data format
 
 Each line in `data/official_sources.jsonl` is one source chunk:
@@ -88,15 +75,7 @@ Each line in `data/official_sources.jsonl` is one source chunk:
 {"id":"lab-legal-aid","title":"Legal Aid Bureau - Applying for legal aid","source":"Legal Aid Bureau","url":"https://lab.mlaw.gov.sg/legal-services/apply-for-legal-aid/","text":"The Legal Aid Bureau explains how eligible persons may apply for civil legal aid in Singapore.","tags":["legal aid","civil"]}
 ```
 
-The loader rejects unofficial domains. That prevents blog posts, forum comments, or random summaries from quietly becoming legal context.
-
-## Roadmap
-
-- Add more cleaned source chunks from SSO, Judiciary, MinLaw, AGC, and LAB
-- Build a benchmark set of 30 to 50 Singapore legal-access questions
-- Measure citation accuracy, refusal accuracy, and hallucination rate
-- Replace keyword retrieval with BM25, embeddings, or a hybrid retriever
-- Add a small web demo and screenshots for portfolio review
+The loader rejects unofficial domains. That prevents blog posts, forum comments, or random summaries from invading the bot's context which also helps with negating AI hallucination.
 
 ## Disclaimer
 
