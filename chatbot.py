@@ -14,7 +14,7 @@ from legal_rag.core import LegalRAGAssistant
 from legal_rag.sources import load_jsonl_sources
 
 BOT_USERNAME: Final = os.getenv("BOT_USERNAME", "@LegalCodebreakerBot")
-DEFAULT_MODEL: Final = os.getenv("OPENAI_MODEL", "gpt-4o-mini") ## use whatever model / LLM provider, API costs are lower with gpt 4o
+DEFAULT_MODEL: Final = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DEFAULT_SOURCES_PATH: Final = str(
     Path(__file__).resolve().parent / "data" / "official_sources.jsonl"
 )

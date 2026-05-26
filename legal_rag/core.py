@@ -56,6 +56,34 @@ LEGAL_TERMS = {
     "trial",
 }
 
+FOREIGN_JURISDICTION_TERMS = {
+    "australia",
+    "canada",
+    "china",
+    "india",
+    "indonesia",
+    "japan",
+    "malaysia",
+    "philippines",
+    "thailand",
+    "uk",
+    "united kingdom",
+    "us",
+    "usa",
+    "vietnam",
+}
+
+PERSONAL_ADVICE_PATTERNS = (
+    "should i",
+    "can i win",
+    "will i win",
+    "what should i do",
+    "help me win",
+    "my case",
+    "my charge",
+    "plead guilty",
+)
+
 STOPWORDS = {
     "a",
     "an",
@@ -99,6 +127,8 @@ class SourceDocument:
 
 @dataclass(frozen=True)
 class RetrievalResult:
+    """A retrieved source plus the simple lexical score that ranked it."""
+
     document: SourceDocument
     score: int
     matched_terms: tuple[str, ...]
@@ -106,6 +136,8 @@ class RetrievalResult:
 
 @dataclass(frozen=True)
 class PreparedAnswer:
+    """RAG preparation result returned before any LLM call is made."""
+
     can_answer: bool
     message: str
     sources: list[RetrievalResult]
@@ -200,6 +232,15 @@ class LegalRAGAssistant:
 
     def _looks_like_singapore_legal_question(self, query: str) -> bool:
         terms = tokenize(query)
+        normalized_query = query.lower()
+
+        # The bot is intentionally Singapore-only. Without this gate, a foreign-law
+        # question about "theft" could match the Penal Code source and look grounded.
+        if terms & FOREIGN_JURISDICTION_TERMS:
+            return False
+        if any(pattern in normalized_query for pattern in PERSONAL_ADVICE_PATTERNS):
+            return False
+
         return bool(terms & LEGAL_TERMS)
 
     def _format_context(self, sources: Sequence[RetrievalResult]) -> str:

@@ -33,6 +33,8 @@ def load_jsonl_sources(path: str | Path) -> list[SourceDocument]:
             raw = json.loads(line)
             url = str(raw["url"])
             domain = urlparse(url).netloc.lower()
+            # Keep the source index boring on purpose: official domains only.
+            # The model can still be creative in wording, but not in evidence.
             if domain not in OFFICIAL_DOMAINS:
                 raise ValueError(
                     f"Line {line_number}: source URL must be from an approved official domain, got {domain!r}"
