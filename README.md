@@ -50,6 +50,11 @@ prepare_answer()
 Telegram bot sends the answer
 ```
 
+## What is a RAG
+
+"RAG stands for Retrieval-Augmented Generation. It is an AI technique that grounds a large language model (LLM) in external, proprietary, or up-to-date data before generating a response. Think of it like an open-book exam for the AI—it searches a trusted database to find the right information, then reads it to craft an accurate answer." - Amazon Web Services
+
+
 ## Files
 
 ```text
