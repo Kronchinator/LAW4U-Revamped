@@ -1,101 +1,117 @@
-from typing import Final
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from openai import OpenAI
+"""Telegram entrypoint for LegalCodebreaker.
 
-# --- Placeholders ---
-TELEGRAM_TOKEN: Final = "YOUR_TELEGRAM_BOT_TOKEN"
-OPENAI_API_KEY: Final = "YOUR_OPENAI_API_KEY"
-BOT_USERNAME: Final = "@LegalCodebreakerBot"
+The RAG logic lives in ``legal_rag`` so it can be tested without Telegram or
+OpenAI. This file wires that core into a Telegram bot when credentials exist.
+"""
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+from __future__ import annotations
 
-SYSTEM_PROMPT = """You are a Singaporean legal assistant with deep knowledge of Singapore law.
+import os
+from pathlib import Path
+from typing import Any, Final
 
-Your job is to answer questions about the Singapore legal system clearly and accurately.
+from legal_rag.core import LegalRAGAssistant
+from legal_rag.sources import load_jsonl_sources
 
-Rules you must follow:
-1. Only answer questions related to Singapore law, the legal system, courts, or legal procedures.
-2. Base your answers exclusively on official Singapore sources:
-   - Singapore Statutes Online (sso.agc.gov.sg)
-   - Attorney-General's Chambers (agc.gov.sg)
-   - Singapore Judiciary (judiciary.gov.sg)
-   - Ministry of Law (mlaw.gov.sg)
-   - Legal Aid Bureau (lab.mlaw.gov.sg)
-3. Always cite the specific Act, section, or penal code you are referencing (e.g. "Penal Code 1871, s 304A" or "Criminal Procedure Code 2010, s 23").
-4. Include the relevant URL from the above official sources when possible.
-5. If a question is outside Singapore law or you cannot find reliable official grounding, say so clearly and recommend the user consult a qualified Singapore lawyer.
-6. Never give personal legal advice. Always end with a reminder that this is general information only and not a substitute for professional legal counsel.
-7. Keep responses clear and structured — use numbered lists or sections when helpful.
-
-If the user asks something unrelated to Singapore law, politely redirect them."""
+BOT_USERNAME: Final = os.getenv("BOT_USERNAME", "@LegalCodebreakerBot")
+DEFAULT_MODEL: Final = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+DEFAULT_SOURCES_PATH: Final = str(
+    Path(__file__).resolve().parent / "data" / "official_sources.jsonl"
+)
 
 
-def query_openai(user_message: str) -> str:
+def build_assistant(source_path: str | Path = DEFAULT_SOURCES_PATH) -> LegalRAGAssistant:
+    """Build the RAG assistant from validated official-source records."""
+
+    return LegalRAGAssistant(load_jsonl_sources(source_path), min_score=1)
+
+
+def query_openai(
+    user_message: str,
+    client: Any,
+    assistant: LegalRAGAssistant,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """Prepare a grounded RAG prompt and send it to OpenAI.
+
+    If retrieval cannot ground the question in official Singapore legal sources,
+    return the refusal directly without calling the model.
+    """
+
+    prepared = assistant.prepare_answer(user_message)
+    if not prepared.can_answer:
+        return prepared.message
+
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            max_tokens=1024,
-            temperature=0.3,
+            model=model,
+            messages=prepared.messages,
+            max_tokens=900,
+            temperature=0.2,
         )
         return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"OpenAI error: {e}")
-        return "Sorry, I ran into an error fetching a response. Please try again shortly."
+    except Exception as exc:  # pragma: no cover - defensive runtime guard
+        print(f"OpenAI error: {exc}")
+        return "Sorry, I ran into an error fetching a grounded response. Please try again shortly."
 
 
 # Commands
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_command(update, context):
     await update.message.reply_text(
         "Hello! I'm LegalCodebreaker 🇸🇬\n\n"
-        "I can answer questions about the Singapore legal system — laws, courts, penal codes, and procedures.\n\n"
-        "Ask me anything, and I'll cite official sources where possible.\n\n"
+        "I answer Singapore legal-information questions using retrieved official-source context.\n\n"
+        "Ask about laws, courts, legal aid, or procedures and I will cite official sources where possible.\n\n"
         "⚠️ I provide general information only — not professional legal advice. For serious matters, consult a qualified lawyer."
     )
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def help_command(update, context):
     await update.message.reply_text(
-        "Here are some things you can ask me:\n"
-        "• What is the penalty for theft in Singapore?\n"
-        "• How does bail work in Singapore courts?\n"
-        "• What does the Misuse of Drugs Act cover?\n"
-        "• How do I file a civil claim in the Magistrates' Court?\n\n"
+        "Good questions to try:\n"
+        "• How do I apply for legal aid in Singapore?\n"
+        "• What are Small Claims Tribunals for?\n"
+        "• Where can I read about theft under the Penal Code?\n"
+        "• What happens in a criminal court process?\n\n"
         "For urgent legal issues, contact the Legal Aid Bureau (lab.mlaw.gov.sg) or a practising Singapore lawyer."
     )
 
 
-# Message handler
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update, context):
     message_type: str = update.message.chat.type
     text: str = update.message.text
 
     print(f"User ({update.message.chat.id}) in {message_type}: {text}")
 
-    if message_type == "group":
+    if message_type in {"group", "supergroup"}:
         if BOT_USERNAME in text:
             text = text.replace(BOT_USERNAME, "").strip()
         else:
             return
 
-    response = query_openai(text)
+    response = query_openai(text, context.bot_data["openai_client"], context.bot_data["rag_assistant"])
     print(f"Bot: {response}")
     await update.message.reply_text(response)
 
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def error_handler(update, context):
     print(f"Update {update} caused error: {context.error}")
 
 
-if __name__ == "__main__":
+def main() -> None:
+    telegram_token = os.environ["TELEGRAM_TOKEN"]
+    openai_api_key = os.environ["OPENAI_API_KEY"]
+
+    from openai import OpenAI
+    from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+
+    # Bind annotations at runtime for python-telegram-bot users without making
+    # tests import that dependency.
+    _ = ContextTypes
+
     print("Starting LegalCodebreaker bot...")
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = Application.builder().token(telegram_token).build()
+    app.bot_data["openai_client"] = OpenAI(api_key=openai_api_key)
+    app.bot_data["rag_assistant"] = build_assistant()
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
@@ -104,3 +120,7 @@ if __name__ == "__main__":
 
     print("Polling started...")
     app.run_polling(poll_interval=1)
+
+
+if __name__ == "__main__":
+    main()
