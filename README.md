@@ -1,39 +1,37 @@
 # LegalCodebreaker: Singapore legal RAG assistant
 
-LegalCodebreaker answers Singapore legal information questions using retrieved official sources before it calls an LLM.
+LegalCodebreaker answers Singapore legal information questions only after it retrieves relevant official sources.
 
-The first version of this repo was a simple Telegram bot with a long system prompt. This version moves the important parts into a small RAG core: source validation, retrieval, prompt building, citations, refusal behaviour, and now a deterministic evaluation harness.
+The first version was a Telegram bot with a long system prompt. That was too easy to fool and too hard to measure. This version moves the important parts into a small RAG core: official-source validation, retrieval, prompt construction, citations, refusal behaviour, and a deterministic evaluation harness.
 
-Current status: working MVP foundation. It is not a full legal database yet.
+Current status: working MVP foundation. It is not a full legal database.
 
 ## Why I built it this way
 
-Legal chatbots can be risky. If a model guesses, the answer may sound confident and still be wrong.
+Legal chatbots are risky because a model can sound confident while making things up. For law, that is a bad failure mode.
 
-So the rule here is simple:
+The rule here is simple: if the system cannot retrieve an approved Singapore source, it does not ask the model to answer.
 
-**No official Singapore source retrieved → no model answer.**
+That guardrail is the main point of the project. The bot validates sources, retrieves relevant context, refuses questions outside its evidence base, and then tests whether those behaviours work.
 
-That keeps the bot honest. It also makes the project more than a Telegram wrapper around OpenAI. The useful part is the guardrail: validate the sources, retrieve the relevant context, refuse when the question falls outside the available evidence, then measure whether those behaviours actually work.
+## What RAG means here
 
-## What is RAG?
+RAG means retrieval augmented generation. The model does not answer from memory alone. The system first retrieves source material, then gives that material to the model as context.
 
-RAG means retrieval-augmented generation. The model does not answer from memory alone. The system first retrieves relevant source material, then gives that material to the model as context.
-
-For this project, the source material is deliberately narrow: official Singapore legal and public-service pages. If the system cannot retrieve a relevant official source, it refuses instead of letting the model improvise.
+For this project, the source material is deliberately narrow: official Singapore legal and public-service pages. If the question falls outside that source set, the system refuses instead of improvising.
 
 ## What works now
 
 - Loads source chunks from JSONL
 - Rejects source URLs outside approved official domains
-- Retrieves matching source chunks with a lightweight keyword baseline
-- Builds a grounded OpenAI prompt with source titles and URLs
+- Retrieves matching chunks with a lightweight keyword baseline
+- Builds grounded OpenAI prompts with source titles and URLs
 - Refuses unrelated, foreign-law, or personal legal-strategy questions before calling the model
-- Runs as a Telegram bot using environment variables
+- Runs as a Telegram bot through environment variables
 - Includes unit tests for retrieval, source validation, refusal behaviour, model-call behaviour, and evaluation scoring
-- Includes a Stage 1 benchmark harness for retrieval, refusal, citation, disclaimer, and keyword checks
+- Includes a Stage 1 benchmark for retrieval, refusal, citation, disclaimer, and keyword checks
 
-Approved domains for the seed dataset:
+Approved domains in the seed dataset:
 
 - `sso.agc.gov.sg`
 - `agc.gov.sg`
@@ -60,16 +58,16 @@ Telegram bot sends the answer
 ## Files
 
 ```text
-chatbot.py                    Telegram/OpenAI wiring
-legal_rag/core.py             Retrieval, grounding, prompt construction
-legal_rag/sources.py          JSONL loader and official-domain checks
-legal_rag/evaluation.py       Deterministic benchmark scoring
-data/official_sources.jsonl   Seed official source records
+chatbot.py                     Telegram/OpenAI wiring
+legal_rag/core.py              Retrieval, grounding, prompt construction
+legal_rag/sources.py           JSONL loader and official-domain checks
+legal_rag/evaluation.py        Deterministic benchmark scoring
+data/official_sources.jsonl    Seed official source records
 eval/benchmark_questions.jsonl Stage 1 benchmark questions
-eval/run_eval.py              Evaluation runner
-eval/report.md                Latest generated evaluation report
-tests/                        Unit tests
-PROJECT_STATE.md              Working notes
+eval/run_eval.py               Evaluation runner
+eval/report.md                 Latest generated evaluation report
+tests/                         Unit tests
+PROJECT_STATE.md               Working notes
 ```
 
 ## Run the tests
@@ -103,7 +101,7 @@ Citation compliance: 100.0%
 Disclaimer compliance: 100.0%
 ```
 
-This result is for the current seed dataset. It is useful, but not final proof of legal quality. The next step is a larger benchmark and more source chunks.
+This result is for the current seed dataset. It is useful, but it is not proof of legal quality. The next step is a larger benchmark with more source chunks.
 
 ## Source data format
 
@@ -113,11 +111,11 @@ Each line in `data/official_sources.jsonl` is one source chunk:
 {"id":"lab-legal-aid","title":"Legal Aid Bureau - Applying for legal aid","source":"Legal Aid Bureau","url":"https://lab.mlaw.gov.sg/legal-services/apply-for-legal-aid/","text":"The Legal Aid Bureau explains how eligible persons may apply for civil legal aid in Singapore.","tags":["legal aid","civil"]}
 ```
 
-The loader rejects unofficial domains. That prevents blog posts, forum comments, or random summaries from quietly becoming legal context.
+The loader rejects unofficial domains so blog posts, forum comments, or random summaries cannot quietly become legal context.
 
 ## Run the bot
 
-Set the secrets locally. Do not commit them.
+Set secrets locally. Do not commit them.
 
 ```bash
 export TELEGRAM_TOKEN="your-telegram-token"
