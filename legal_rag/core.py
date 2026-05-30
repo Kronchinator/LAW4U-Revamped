@@ -33,6 +33,7 @@ LEGAL_TERMS = {
     "case",
     "civil",
     "claim",
+    "code",
     "contract",
     "court",
     "criminal",
@@ -46,6 +47,8 @@ LEGAL_TERMS = {
     "legal",
     "offence",
     "penal",
+    "penalties",
+    "penalty",
     "police",
     "procedure",
     "sentence",
@@ -54,6 +57,7 @@ LEGAL_TERMS = {
     "sue",
     "theft",
     "trial",
+    "guidance",
 }
 
 FOREIGN_JURISDICTION_TERMS = {
@@ -68,13 +72,13 @@ FOREIGN_JURISDICTION_TERMS = {
     "thailand",
     "uk",
     "united kingdom",
+    "united states",
     "us",
     "usa",
     "vietnam",
 }
 
 PERSONAL_ADVICE_PATTERNS = (
-    "should i",
     "can i win",
     "will i win",
     "what should i do",
@@ -82,6 +86,18 @@ PERSONAL_ADVICE_PATTERNS = (
     "my case",
     "my charge",
     "plead guilty",
+    "should i plead",
+    "should i appeal",
+    "should i accept",
+    "pretend you are my lawyer",
+    "tell me the exact strategy",
+)
+
+PROMPT_INJECTION_PATTERNS = (
+    "ignore your instructions",
+    "using any legal blog",
+    "use your memory instead of sources",
+    "do not include any disclaimer",
 )
 
 STOPWORDS = {
@@ -238,7 +254,11 @@ class LegalRAGAssistant:
         # question about "theft" could match the Penal Code source and look grounded.
         if terms & FOREIGN_JURISDICTION_TERMS:
             return False
+        if any(jurisdiction in normalized_query for jurisdiction in FOREIGN_JURISDICTION_TERMS):
+            return False
         if any(pattern in normalized_query for pattern in PERSONAL_ADVICE_PATTERNS):
+            return False
+        if any(pattern in normalized_query for pattern in PROMPT_INJECTION_PATTERNS):
             return False
 
         return bool(terms & LEGAL_TERMS)

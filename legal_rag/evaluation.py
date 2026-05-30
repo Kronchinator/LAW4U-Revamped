@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from html import escape
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -31,6 +32,7 @@ class BenchmarkQuestion:
     expected_source_domains: tuple[str, ...]
     expected_keywords: tuple[str, ...]
     notes: str = ""
+    risk_type: str = "general"
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class EvaluationResult:
     keyword_passed: bool
     retrieved_sources: tuple[str, ...]
     notes: tuple[str, ...]
+    risk_type: str
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,7 @@ def load_benchmark(path: str | Path) -> list[BenchmarkQuestion]:
                     expected_source_domains=tuple(raw.get("expected_source_domains", ())),
                     expected_keywords=tuple(raw.get("expected_keywords", ())),
                     notes=str(raw.get("notes", "")),
+                    risk_type=str(raw.get("risk_type", "general")),
                 )
             )
     return questions
@@ -163,6 +167,7 @@ def evaluate_question(
         keyword_passed=keyword_passed,
         retrieved_sources=tuple(result.document.url for result in prepared.sources),
         notes=tuple(notes),
+        risk_type=question.risk_type,
     )
 
 
@@ -229,6 +234,7 @@ def render_markdown_report(
                 f"### {result.id}: {status}",
                 "",
                 f"- Category: {result.category}",
+                f"- Risk type: {result.risk_type}",
                 f"- Expected behaviour: {result.expected_behavior}",
                 f"- Actual behaviour: {'answer' if result.actual_can_answer else 'refuse'}",
                 f"- Retrieved sources: {', '.join(result.retrieved_sources) if result.retrieved_sources else 'None'}",
@@ -237,6 +243,124 @@ def render_markdown_report(
             ]
         )
     return "\n".join(lines).rstrip() + "\n"
+
+
+def render_html_dashboard(
+    summary: EvaluationSummary,
+    results: list[EvaluationResult],
+    generated_at: datetime | None = None,
+) -> str:
+    """Render a self-contained AI Trust Lab dashboard for GitHub/demo review."""
+
+    timestamp = (generated_at or datetime.now(UTC)).strftime("%Y-%m-%d %H:%M UTC")
+    categories = _category_breakdown(results)
+    cards = [
+        ("Total questions", str(summary.total)),
+        ("Passed", str(summary.passed)),
+        ("Failed", str(summary.failed)),
+        ("Overall pass rate", f"{summary.overall_pass_rate:.1f}%"),
+        ("Retrieval accuracy", f"{summary.retrieval_accuracy:.1f}%"),
+        ("Refusal accuracy", f"{summary.refusal_accuracy:.1f}%"),
+        ("Citation compliance", f"{summary.citation_compliance:.1f}%"),
+        ("Disclaimer compliance", f"{summary.disclaimer_compliance:.1f}%"),
+    ]
+
+    card_html = "\n".join(
+        f"""
+        <section class="metric-card">
+          <span>{escape(label)}</span>
+          <strong>{escape(value)}</strong>
+        </section>"""
+        for label, value in cards
+    )
+    category_rows = "\n".join(
+        f"""
+        <tr>
+          <td>{escape(category)}</td>
+          <td>{counts['passed']} / {counts['total']}</td>
+          <td>{_percent(counts['passed'], counts['total']):.1f}%</td>
+        </tr>"""
+        for category, counts in sorted(categories.items())
+    )
+    result_rows = "\n".join(
+        f"""
+        <article class="result {'pass' if result.passed else 'fail'}">
+          <div class="result-head">
+            <strong>{escape(result.id)}</strong>
+            <span>{'PASS' if result.passed else 'FAIL'}</span>
+          </div>
+          <p>{escape(result.question)}</p>
+          <dl>
+            <dt>Category</dt><dd>{escape(result.category)}</dd>
+            <dt>Risk type</dt><dd>{escape(result.risk_type)}</dd>
+            <dt>Expected</dt><dd>{escape(result.expected_behavior)}</dd>
+            <dt>Actual</dt><dd>{'answer' if result.actual_can_answer else 'refuse'}</dd>
+            <dt>Sources</dt><dd>{escape(', '.join(result.retrieved_sources) if result.retrieved_sources else 'None')}</dd>
+          </dl>
+        </article>"""
+        for result in results
+    )
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Trust Lab - LegalCodebreaker evaluation</title>
+  <style>
+    body {{ margin: 0; font-family: Inter, system-ui, sans-serif; background: #111827; color: #e5e7eb; }}
+    main {{ max-width: 1120px; margin: 0 auto; padding: 40px 20px; }}
+    header {{ margin-bottom: 28px; }}
+    h1 {{ margin: 0 0 8px; font-size: clamp(2rem, 5vw, 4rem); }}
+    .subtitle {{ max-width: 760px; color: #cbd5e1; line-height: 1.6; }}
+    .metrics {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin: 28px 0; }}
+    .metric-card {{ background: #1f2937; border: 1px solid #334155; border-radius: 16px; padding: 18px; }}
+    .metric-card span {{ display: block; color: #94a3b8; font-size: .9rem; margin-bottom: 8px; }}
+    .metric-card strong {{ font-size: 1.8rem; }}
+    table {{ width: 100%; border-collapse: collapse; background: #1f2937; border-radius: 16px; overflow: hidden; }}
+    th, td {{ text-align: left; padding: 12px 14px; border-bottom: 1px solid #334155; }}
+    th {{ color: #93c5fd; }}
+    .results {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; margin-top: 18px; }}
+    .result {{ background: #1f2937; border-radius: 16px; padding: 16px; border: 1px solid #334155; }}
+    .result.pass {{ border-color: #059669; }}
+    .result.fail {{ border-color: #dc2626; }}
+    .result-head {{ display: flex; justify-content: space-between; gap: 12px; }}
+    .result-head span {{ color: #a7f3d0; font-weight: 700; }}
+    .result.fail .result-head span {{ color: #fecaca; }}
+    dl {{ display: grid; grid-template-columns: 90px 1fr; gap: 6px 12px; color: #cbd5e1; }}
+    dt {{ color: #94a3b8; }}
+    footer {{ color: #94a3b8; margin-top: 32px; }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>AI Trust Lab</h1>
+      <p class="subtitle">A deterministic evaluation dashboard for LegalCodebreaker. It checks the part of the system I control directly: whether the assistant retrieves official Singapore sources, refuses unsafe or unsupported questions, and prepares citation-ready prompts before any model call.</p>
+      <p>Generated: {escape(timestamp)}</p>
+    </header>
+    <section class="metrics">{card_html}</section>
+    <h2>Category breakdown</h2>
+    <table>
+      <thead><tr><th>Category</th><th>Passed</th><th>Pass rate</th></tr></thead>
+      <tbody>{category_rows}</tbody>
+    </table>
+    <h2>Question results</h2>
+    <section class="results">{result_rows}</section>
+    <footer>This dashboard does not prove legal correctness. It proves that the retrieval and refusal layer can be tested instead of trusted on vibes.</footer>
+  </main>
+</body>
+</html>
+"""
+
+
+def _category_breakdown(results: list[EvaluationResult]) -> dict[str, dict[str, int]]:
+    categories: dict[str, dict[str, int]] = {}
+    for result in results:
+        bucket = categories.setdefault(result.category, {"total": 0, "passed": 0})
+        bucket["total"] += 1
+        bucket["passed"] += int(result.passed)
+    return categories
 
 
 def _check_behavior(prepared: PreparedAnswer, question: BenchmarkQuestion) -> bool:
@@ -282,3 +406,4 @@ def _percent(numerator: int, denominator: int) -> float:
     if denominator == 0:
         return 100.0
     return round((numerator / denominator) * 100, 1)
+

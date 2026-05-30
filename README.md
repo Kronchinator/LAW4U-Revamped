@@ -29,7 +29,8 @@ For this project, the source material is deliberately narrow: official Singapore
 - Refuses unrelated, foreign-law, or personal legal-strategy questions before calling the model
 - Runs as a Telegram bot through environment variables
 - Includes unit tests for retrieval, source validation, refusal behaviour, model-call behaviour, and evaluation scoring
-- Includes a Stage 1 benchmark for retrieval, refusal, citation, disclaimer, and keyword checks
+- Includes an AI Trust Lab benchmark for retrieval, refusal, prompt-injection resistance, citation, disclaimer, and keyword checks
+- Generates both a Markdown evaluation report and a static HTML dashboard
 
 Approved domains in the seed dataset:
 
@@ -66,6 +67,7 @@ data/official_sources.jsonl    Seed official source records
 eval/benchmark_questions.jsonl Stage 1 benchmark questions
 eval/run_eval.py               Evaluation runner
 eval/report.md                 Latest generated evaluation report
+eval/trust_dashboard.html      Static AI Trust Lab dashboard
 tests/                         Unit tests
 PROJECT_STATE.md               Working notes
 ```
@@ -76,32 +78,40 @@ PROJECT_STATE.md               Working notes
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-## Run the evaluation harness
+## Run the AI Trust Lab evaluation
 
 ```bash
 python3 eval/run_eval.py
 ```
 
-The Stage 1 harness does not call the language model. It checks the deterministic RAG layer:
+The AI Trust Lab harness does not call the language model. It checks the deterministic RAG layer:
 
 - answerable Singapore legal questions retrieve the expected official source domain
 - off-topic questions are refused
 - foreign-law questions are refused
 - personal legal-strategy questions are refused
+- prompt-injection attempts are refused
 - grounded prompts include citations and the legal disclaimer
+
+It writes two artifacts:
+
+```text
+eval/report.md
+eval/trust_dashboard.html
+```
 
 Latest Stage 1 result:
 
 ```text
-20 benchmark questions
-20 passed, 0 failed
+40 benchmark questions
+40 passed, 0 failed
 Retrieval accuracy: 100.0%
 Refusal accuracy: 100.0%
 Citation compliance: 100.0%
 Disclaimer compliance: 100.0%
 ```
 
-This result is for the current seed dataset. It is useful, but it is not proof of legal quality. The next step is a larger benchmark with more source chunks.
+This result is for the current seed dataset. It is useful, but it is not proof of legal quality. The point is to show that the safety layer can be measured instead of trusted by assumption.
 
 ## Source data format
 
